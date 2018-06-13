@@ -1,0 +1,116 @@
+import java_cup.runtime.*;
+import java.util.HashMap;
+import java.util.Vector;
+
+init with {:
+    scalarTable = new HashMap<String, Double>();
+	vectorTable = new HashMap<String, Double[]>();
+:};
+
+parser code {:
+    public HashMap <String, Double>scalarTable;
+	public HashMap <String, Double[]>vectorTable;
+    
+	public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (line "+line+", column "+column+"): " + message);
+            } else System.err.print(": " + message);
+        else System.err.print(": " + message);
+    }
+
+:};
+
+terminal Double SCALAR;
+terminal SOPEN, SCLOSE, PLUS, MINUS, STAR, DIV, EXPON, POINT, EQUAL, SEMIC, QM, COMMA;
+terminal String SVAR, VVAR;
+terminal UMINUS;
+
+non terminal Object prog, line_list, line, scal_assign, vect_assign, op_between_scalars_line, op_between_vectors_line; 
+non terminal Double op_between_scalars;
+non terminal Double[] op_between_vectors, vector;
+
+precedence left EXPON;
+precedence left STAR;
+precedence left DIV;
+precedence left POINT;
+precedence left PLUS;
+precedence left MINUS;
+precedence left UMINUS;
+
+
+start with prog;
+
+prog ::= line_list QM {: System.out.println("Programm correctly recognized"); :};
+
+line_list ::= line_list line | ;
+
+line ::= op_between_scalars_line | op_between_vectors_line | scal_assign | vect_assign;
+
+op_between_scalars_line ::= op_between_scalars:x SEMIC {:
+							System.out.println("scalar expression: " + x.doubleValue()); :};
+
+op_between_vectors_line ::= op_between_vectors:X SEMIC {:
+							System.out.println("vector expression: [" + X[0] + ","+ X[1]+"]"); :}; 
+
+op_between_scalars ::= op_between_scalars:x PLUS op_between_scalars:y {: RESULT = x+y; :}
+						| op_between_scalars:x MINUS op_between_scalars:y
+							{: RESULT = x-y; :}
+						| op_between_scalars:x STAR op_between_scalars:y 
+							{: RESULT = x*y; :}
+						| op_between_scalars:x DIV op_between_scalars:y 
+							{: RESULT = x/y; :}
+						| op_between_scalars:x EXPON op_between_scalars:y 
+							{: RESULT = Math.pow(x,y); :}
+						| op_between_vectors:X POINT op_between_vectors:Y 
+								{: RESULT = new Double(X[0]*Y[0]+X[1]*Y[1]); :}
+						| SCALAR:x {: RESULT = x; :}
+						| SVAR:name {: RESULT = parser.scalarTable.get(name); :}
+						| MINUS SCALAR:x {: RESULT = -x; :} %prec UMINUS 
+						| MINUS SVAR:name {: RESULT = -parser.scalarTable.get(name); :} %prec UMINUS; 
+
+op_between_vectors ::= op_between_vectors:X PLUS op_between_vectors:Y
+								{: RESULT = new Double[2];
+								RESULT[0] = X[0]+Y[0];
+								RESULT[1] = X[1]+Y[1]; :}
+						| op_between_vectors:X MINUS op_between_vectors:Y 
+								{: RESULT = new Double[2];
+								RESULT[0] = X[0]-Y[0];
+								RESULT[1] = X[1]-Y[1]; :}
+						| vector:X
+								{: RESULT = new Double[2];
+								RESULT[0] = X[0];
+								RESULT[1] = X[1]; :}
+						| VVAR:name
+								{: RESULT = new Double[2];
+								RESULT = parser.vectorTable.get(name); :}
+						| op_between_vectors:X STAR op_between_scalars:y 
+								{: RESULT = new Double[2];
+								RESULT[0] = X[0]*y;
+				 				RESULT[1] = X[1]*y; :}
+						| op_between_vectors:X DIV op_between_scalars:y 
+								{: RESULT = new Double[2];
+								RESULT[0] = X[0]/y;
+								RESULT[1] = X[1]/y; :}
+						| op_between_scalars:y STAR op_between_vectors:X 
+								{: RESULT = new Double[2];
+								RESULT[0] = X[0]*y;
+								RESULT[1] = X[1]*y; :}
+						| op_between_scalars:y DIV op_between_vectors:X
+								{: RESULT = new Double[2];
+								RESULT[0] = y/X[0];
+								RESULT[1] = y/X[1]; :};
+
+scal_assign ::= SVAR:name EQUAL op_between_scalars:val SEMIC 
+{: System.out.println("assignment: " + name + "->"+val); parser.scalarTable.put(name, val); :};
+
+vect_assign ::= VVAR:name EQUAL op_between_vectors:X SEMIC {: System.out.println("assignment: " + name + "->["+X[0]+","+X[1]+"]"); parser.vectorTable.put(name, X); :};
+vector ::= SOPEN op_between_scalars:v1 COMMA op_between_scalars:v2 SCLOSE
+														{:	RESULT = new Double[2];
+															RESULT[0]=v1;
+															RESULT[1]=v2; :};
+
+

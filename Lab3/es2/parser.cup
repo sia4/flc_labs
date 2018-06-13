@@ -1,0 +1,42 @@
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (line "+line+", column "+column+"): ");
+            } else System.err.print(": ");
+        else System.err.print(": ");
+    }
+
+:};
+
+terminal SEP_WRITER, ISBN, DPOINTS, STRING, NUMBER, LETTER, COMMA, SEMICOLON, LI, LS, AV, SO, BO, GEN, SEPARATOR, DATE;
+
+non terminal prog, first_part, first_el, book_list, book, codes, second_part, second_el, loan_list, loan, lit_gen;
+
+start with prog;
+
+prog ::= first_part SEPARATOR second_part  {: System.out.println("Programm correctly recognized"); :};
+
+
+first_part ::= first_part first_el | first_el;
+first_el ::= STRING SEP_WRITER book_list SEMICOLON;
+
+book_list ::= book_list COMMA book | book;
+
+book ::= ISBN DPOINTS STRING DPOINTS NUMBER | ISBN DPOINTS STRING DPOINTS NUMBER DPOINTS codes;
+codes ::= lit_gen NUMBER | lit_gen NUMBER LETTER;
+lit_gen ::= LI AV | LI SO | LS AV | LS SO | LS BO;
+
+second_part ::= second_part second_el | second_el;
+second_el ::= STRING DPOINTS loan_list SEMICOLON;
+
+loan_list ::= loan_list COMMA loan | loan;
+loan ::= DATE ISBN; 

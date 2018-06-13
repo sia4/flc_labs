@@ -1,0 +1,220 @@
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (line "+line+", column "+column+"): ");
+            } else System.err.print(": ");
+		else System.err.print(": ");
+	}
+
+    // Represent the number of the first usable label 
+    public int label = 0;
+
+    // Generation of the next label number
+    public int genLabel(){
+        label++;
+        return label;
+    };
+
+	// Return semantic value of symbol in position (position)
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+
+    // Return the line number of actual symbol
+    public int getLine() {
+        if (((Symbol)stack.elementAt(tos)).left != -1){
+            return ((Symbol)stack.elementAt(tos)).left+1;
+        }else return -1;
+    }
+    // Return the column number of actual symbol
+    public int getColumn() {
+        if (((Symbol)stack.elementAt(tos)).left != -1){
+            return ((Symbol)stack.elementAt(tos)).right+1;
+        }else return -1;
+    }
+:};
+
+action code {:
+	private void pSynError(String message){
+        System.err.println("SYN ERROR: line: "+parser.getLine()+" col: "+parser.getColumn()+": "+message);
+        parser.done_parsing();
+    }
+    private void pSynWarning(String message){
+        System.err.println("SYN WARNING: line: "+parser.getLine()+" col: "+parser.getColumn()+": "+message);
+    }
+:}
+
+terminal GCLOSE, GOPEN, ROPEN, RCLOSE, SOPEN, SCLOSE, PLUS, MINUS, STAR, SLASH, EQUAL, S, COMMA, LT, GT, LET, GET, ELT, EGT, AND, OR, NOT, IF, WHILE, PRINT, UMINUS, INT_TYPE, DOUBLE_TYPE, ELSE;
+terminal String VAR;
+terminal Integer INT;
+terminal Double DOUBLE;
+
+non terminal program, body, body_el, init_el, name, e, if, while, func, if_cond, while_cond, nt0_if, nt1_if, nt0_while;
+non terminal String declaration_list, declaration, type, var_list, variable;
+
+// Precedences and associativities
+// lower precedences
+precedence left OR;
+precedence left AND;
+precedence left NOT;
+precedence left LT, GT, LET, GET, ELT, EGT, EQUAL;
+precedence left PLUS, MINUS;
+precedence left STAR, SLASH;
+precedence left UMINUS;
+// higher precedences
+
+
+//////////////////////////////////////
+// Grammar start
+//////////////////////////////////////
+
+start with program;
+
+program ::= declaration_list | declaration_list body {: System.out.println("Program correctly recognised"); :};
+
+
+//////////////////////////////////////
+// Declarations
+//////////////////////////////////////
+
+declaration_list ::= declaration_list declaration |;
+declaration ::= type var_list S
+				| type error S {: pSynWarning("Error in declaration"); :};
+
+var_list ::= var_list COMMA {: RESULT = (String) parser.stack(-2); :} variable
+ 			| variable
+;
+variable ::= VAR:name
+				{:
+					RESULT = (String) parser.stack(-1);
+					System.out.println(RESULT + " " + name);
+				:}
+			| VAR:name SOPEN INT:val SCLOSE
+				{:
+					RESULT = (String) parser.stack(-4);
+					System.out.println(RESULT + " " + name + "[" + val + "]");
+				:}
+;
+type ::= INT_TYPE
+			{: RESULT = new String("INT"); :} 
+		 | DOUBLE_TYPE
+			{: RESULT = new String("DOUBLE"); :};
+
+
+//////////////////////////////////////
+// Instructions
+//////////////////////////////////////
+
+body ::= body body_el | body_el
+		| error body_el {: pSynWarning("Error in statement"); :};
+
+body_el ::= init_el | while | if | func | GOPEN body GCLOSE
+		| GOPEN body error GCLOSE {: pSynWarning("Missing ; before }"); :}
+		| GOPEN error GCLOSE {: pSynWarning("Missing ; before }"); :}
+		| error S {: pSynWarning("Error in statement"); :};
+
+//Initialization of variables
+init_el ::= name:n EQUAL e:v S
+			{: System.out.println("EVAL "+v.toString());
+			   System.out.println("ASS "+n); :}
+			| name EQUAL error S {: pSynWarning("Error in expression"); :}
+    		| error EQUAL error S {: pSynWarning("Error in assigment"); :};
+
+
+name ::= VAR:x {: RESULT=x; :}
+		 | VAR:x SOPEN INT:v SCLOSE {: RESULT=new String(x+"["+v+"]"); :}
+		 | VAR:x SOPEN name:v SCLOSE {: RESULT=new String(x+"["+v+"]"); :}
+		 | error SCLOSE {: pSynWarning("Error in vector"); :};
+
+//////////////////////////////////////
+// If
+//////////////////////////////////////
+if ::= IF if_cond nt0_if body_el ELSE nt1_if body_el
+				{:
+					System.out.println("L"+parser.stack(-1)+":");
+                :}
+		| IF if_cond nt0_if body_el
+				{:
+					System.out.println("L"+parser.stack(-1)+":");
+                :}
+		| IF if_cond nt0_if body_el error nt1_if body_el {: pSynWarning("Error 'else' expected in 'if' instruction"); :}
+;
+
+if_cond ::= ROPEN e:e RCLOSE {: RESULT=e; :}
+    | ROPEN error RCLOSE {: pSynWarning("Error in 'if' condition"); :}
+    | error e RCLOSE {: pSynWarning("Error '(' expected in 'if' instruciton"); :}
+    | ROPEN e error  {: pSynWarning("Error ')' expected in 'if' instruciton"); :};
+
+nt0_if ::= {: RESULT=parser.genLabel();
+                System.out.println("EVAL "+parser.stack(0)+"\t/* if (line "+parser.getLine()+") */");
+				System.out.println("GOTOF L"+RESULT);
+            :}
+;
+
+nt1_if ::= {: 
+                RESULT=parser.genLabel();
+                System.out.println("GOTO L"+RESULT);
+                System.out.println("L"+parser.stack(-2)+":");
+            :}
+;
+
+//////////////////////////////////////
+// While
+//////////////////////////////////////
+while ::= WHILE while_cond nt0_while body_el {:
+				System.out.println("L"+parser.stack(-1)+":");
+			:};
+while_cond ::= ROPEN e:e RCLOSE {: RESULT=e; :}
+			| ROPEN error RCLOSE {: pSynWarning("Error in 'while' condition"); :}
+            | error e RCLOSE {: pSynWarning("Error in 'while' condition"); :}
+			| ROPEN e error {: pSynWarning("Error in 'while' condition"); :};
+
+nt0_while ::= {:
+				RESULT=parser.genLabel();
+				System.out.println("EVAL "+parser.stack(0)+"\t/* while (line "+parser.getLine()+") */");
+				System.out.println("GOTOF L"+ RESULT);
+			:};
+
+//print
+func ::= PRINT name:x S{: System.out.println("PRINT "+x); :}
+          | PRINT error S {: pSynWarning("Error in 'print' instruction"); :};
+
+//aritmetic expressions
+e ::= ROPEN e:x RCLOSE 	 {: RESULT=x; :}
+		| e:x PLUS e:y	 {: RESULT=new String(x+" "+y+" + "); :}
+		| e:x MINUS e:y	 {: RESULT=new String(x+" "+y+" - "); :}
+		| e:x STAR e:y	 {: RESULT=new String(x+" "+y+" * "); :}
+		| e:x SLASH e:y	 {: RESULT=new String(x+" "+y+" / "); :}
+		| e:x EQUAL EQUAL e:y	 {: RESULT=new String(x+" "+y+" == "); :}
+		| e:x GT e:y	 {: RESULT=new String(x+" "+y+" > "); :}
+		| e:x LT e:y	 {: RESULT=new String(x+" "+y+" < "); :}
+		| e:x EGT e:y	 {: RESULT=new String(x+" "+y+" >= "); :}
+		| e:x ELT e:y	 {: RESULT=new String(x+" "+y+" <= "); :}
+		| e:x GET e:y	 {: RESULT=new String(x+" "+y+" >= "); :}
+		| e:x LET e:y	 {: RESULT=new String(x+" "+y+" <= "); :}
+		| e:x AND e:y	 {: RESULT=new String(x+" "+y+" & "); :}
+		| e:x OR e:y	 {: RESULT=new String(x+" "+y+" | "); :}
+		| NOT e:x		 {: RESULT=new String(x+" ! "); :}
+		| INT:x	 {: RESULT=x; :}
+		| DOUBLE:x	 {: RESULT=x; :}
+		| name:x	 {: RESULT=x; :}
+	  	| MINUS INT:x  {: RESULT=-x; :} %prec UMINUS
+	  	| MINUS DOUBLE:x  {: RESULT=-x; :}  %prec UMINUS
+		| ROPEN error RCLOSE 	 {: pSynWarning("Errorin expression"); :};
+
+
+
+
+
+
+
+

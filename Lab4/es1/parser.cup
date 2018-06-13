@@ -1,0 +1,77 @@
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+
+    public static int fact_found  = 0;
+    public static int error_found = 0;
+
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (line "+line+", column "+column+"): " + message);
+            } else System.err.print(": " + message);
+        else System.err.print(": " + message);
+    }
+    public void syntax_error(Symbol cur_token){}
+
+    // Return actual symbol
+    /* It returns the object of type Symbol in the top of the parser stack.
+    */
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+
+:};
+
+terminal POINT, RULE_START, COMMA, INT_START, OPEN_B, CLOSE_B, ATOM, VAR;
+
+non terminal prog, elements_list, element, fact, rule, interrogation, predicates_list, predicate, functor, arguments_list, argument;
+
+start with prog;
+
+prog ::= elements_list interrogation elements_list {:
+		if(parser.fact_found == 0 || parser.error_found == 1 )
+			System.out.println("Program correctly recognized, but errors are present"); 
+		else
+			System.out.println("Program correctly recognized");
+		:};
+
+elements_list ::= elements_list element | ;
+element ::= fact | rule;
+
+fact ::= predicate POINT {:parser.fact_found = 1; :}
+			| error POINT {:
+			parser.report_error("Error in a fact\n",parser.getToken());
+			parser.error_found = 1;
+		:};
+
+rule ::= predicate RULE_START predicates_list POINT
+		| error RULE_START predicates_list POINT{:
+			parser.report_error("Error in a rule\n",parser.getToken());
+			parser.error_found = 1;
+		:}
+		| predicate RULE_START error POINT{:
+			parser.report_error("Error in a rule\n",parser.getToken());
+			parser.error_found = 1;
+		:};
+
+interrogation ::= INT_START predicates_list POINT 
+				| INT_START error POINT  {:
+					parser.report_error("Error in an interrogation\n",parser.getToken());
+					parser.error_found = 1;
+				:};
+
+predicates_list ::= predicates_list COMMA predicate | predicate;
+predicate ::= functor arguments_list CLOSE_B | ATOM;
+
+functor ::= ATOM OPEN_B;
+
+arguments_list ::= arguments_list COMMA argument | argument;
+argument ::= predicate | VAR;
+
+

@@ -1,0 +1,20 @@
+default: scanner parser
+	javac *.java
+
+scanner:
+	jflex scanner.jflex
+
+parser:
+	java java_cup.Main -expect 2 -parser parser parser.cup
+
+parser_tree:
+	java java_cup.MainDrawTree -expect 2 -parser parser parser.cup
+
+run:
+	java Main input.txt
+
+clean:
+	rm -f parser.java scanner.java sym.java
+	rm -f *.class
+	rm -f *.*~
+

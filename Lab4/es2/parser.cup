@@ -1,0 +1,139 @@
+import java_cup.runtime.*;
+import java.io.*;
+
+parser code {:
+
+	public static int error_found = 0;
+
+    // Redefinition of error functions
+    public void report_error(String message, Object info) {
+        System.err.print("ERROR: Syntax error");
+        if (info instanceof Symbol)
+            if (((Symbol)info).left != -1){
+                int line = (((Symbol)info).left)+1;
+                int column = (((Symbol)info).right)+1;
+                System.err.print(" (line "+line+", column "+column+"): ");
+            } else System.err.print(": ");
+		else System.err.print(": ");
+	}
+
+	public void syntax_error(Symbol cur_token){}
+
+    // Return actual symbol
+    /* It returns the object of type Symbol in the top of the parser stack.
+    */
+    public Symbol getToken() {
+        return ((Symbol)stack.elementAt(tos));
+    }
+
+:};
+
+
+terminal GCLOSE, GOPEN, ROPEN, RCLOSE, SOPEN, SCLOSE, PLUS, MINUS, STAR, SLASH, EQUAL, S, P, COMMA, LT, GT, LET, GET, ELT, EGT, AND, OR, NOT, INT_TYPE, DOUBLE_TYPE, IF, WHILE, PRINT, INT, DOUBLE, VAR, UMINUS, ELSE;
+
+non terminal program, declaration_list, body, declaration, type, var_list, variable, body_el, init_el, name, e, if, exp, while, func, t, op, cmp, name_f, if_cond, while_cond;
+
+// Precedences and associativities
+// lower precedences
+precedence left OR;
+precedence left AND;
+precedence left NOT;
+precedence left LT, GT, LET, GET, ELT, EGT, EQUAL;
+precedence left PLUS, MINUS;
+precedence left STAR, SLASH;
+precedence left UMINUS;
+// higher precedences
+
+
+//////////////////////////////////////
+// Grammar start
+//////////////////////////////////////
+
+start with program;
+
+program ::= declaration_list | declaration_list body {:
+		if(parser.error_found == 1 )
+			System.out.println("1 or more errors found\n"); 
+		else
+			System.out.println("Program correctly recognized");
+		:};
+
+
+//////////////////////////////////////
+// Declarations
+//////////////////////////////////////
+
+declaration_list ::= declaration_list declaration | declaration;
+declaration ::= type var_list S
+			| type error S {:
+				parser.report_error("Error in a declaration\n", parser.getToken());
+				parser.error_found = 1;
+			:};
+
+var_list ::= var_list COMMA variable | variable;
+variable ::= VAR | VAR SOPEN INT SCLOSE;
+type ::= INT_TYPE | DOUBLE_TYPE;
+
+
+//////////////////////////////////////
+// Instructions
+//////////////////////////////////////
+
+body ::= body body_el | body_el;
+body_el ::= init_el | while | if | func | GOPEN body GCLOSE
+		| GOPEN error GCLOSE {:
+			parser.report_error("Missing ;\n", parser.getToken());
+			parser.error_found = 1;
+		:};
+
+//Initialization of variables
+init_el ::= name EQUAL e S
+		| name EQUAL error S {:
+			parser.report_error("Error in assignement\n", parser.getToken());
+			parser.error_found = 1;
+		:};
+name ::= VAR | VAR SOPEN INT SCLOSE | VAR SOPEN name SCLOSE
+		| VAR SOPEN error SCLOSE {:
+			parser.report_error("Error in assignement\n", parser.getToken());
+			parser.error_found = 1;
+		:};
+
+//if
+if ::= IF if_cond body_el ELSE body_el | IF if_cond body_el
+	| IF if_cond body_el
+if_cond ::= ROPEN exp RCLOSE;
+
+//while
+while ::= WHILE while_cond body_el;
+while_cond ::= ROPEN exp RCLOSE;
+
+//print
+name_f ::= PRINT;
+func ::= name_f t S | name_f error S {:
+			parser.report_error("Error in print function\n", parser.getToken());
+			parser.error_found = 1;
+		:};
+
+//aritmetic expressions
+e ::= ROPEN e RCLOSE | e op e | t
+	  | MINUS t %prec UMINUS
+	  | ROPEN error RCLOSE {:
+		parser.report_error("Error in expression\n", parser.getToken());
+		parser.error_found = 1;
+	:}
+
+
+t ::= INT | DOUBLE | name;
+op ::= PLUS | MINUS | STAR | SLASH; 
+
+//logic and comparative expressions
+exp ::= exp cmp exp | e | NOT exp;
+cmp ::= EQUAL EQUAL | GT | LT | EGT | ELT | GET | LET | AND | OR;  
+
+
+
+
+
+
+
+
